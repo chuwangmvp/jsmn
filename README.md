@@ -5,73 +5,83 @@ JSMN是使用ANSI-C开发的一个极简chunJSON解析器，可以很容易地�
 
 # 示例代码
 
-## 解析 JSON 数据包
-
 ```c
+#include <jsmn.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "cJSON.h"
+#include <string.h>
 
-// 被解析的JSON数据包
-char text[] = "{\"timestamp\":\"2013-11-19T08:50:11\",\"value\":1}";
+/*
+ * A small example of jsmn parsing when JSON structure is known and number of
+ * tokens is predictable.
+ */
 
-int main (int argc, const char * argv[])
+static const char *JSON_STRING = "{\"user\": \"johndoe\", \"admin\": false, \"uid\": 1000,\n  "
+                                 "\"groups\": [\"users\", \"wheel\", \"audio\", \"video\"]}";
+
+static int jsoneq(const char *json, jsmntok_t *tok, const char *s)
 {
-    cJSON *json , *json_value , *json_timestamp;
-    // 解析数据包
-    json = cJSON_Parse(text);
-    if (!json) {
-        printf("Error before: [%s]\n",cJSON_GetErrorPtr());
+    if (tok->type == JSMN_STRING && (int)strlen(s) == tok->end - tok->start &&
+        strncmp(json + tok->start, s, tok->end - tok->start) == 0) {
+        return 0;
     }
-    else {
-        // 解析开关值
-        json_value = cJSON_GetObjectItem(json, "value");
-        if (json_value->type == cJSON_Number) {
-            // 从 valueint 中获得结果
-            printf("value:%d\r\n",json_value->valueint);
-        }
+    return -1;
+}
 
-        // 解析时间戳
-        json_timestamp = cJSON_GetObjectItem( json , "timestamp");
-        if (json_timestamp->type == cJSON_String) {
-            // valuestring中获得结果
-            printf("%s\r\n",json_timestamp->valuestring);
-        }
+int jsmn_test(void)
+{
+    int         i;
+    int         r;
+    jsmn_parser p;
+    jsmntok_t   t[128]; /* We expect no more than 128 tokens */
 
-        // 释放内存空间
-        cJSON_Delete(json);
+    jsmn_init(&p);
+    r = jsmn_parse(&p, JSON_STRING, strlen(JSON_STRING), t, sizeof(t) / sizeof(t[0]));
+    if (r < 0) {
+        printf("Failed to parse JSON: %d\n", r);
+        return 1;
     }
 
-    return 0;
+    /* Assume the top-level element is an object */
+    if (r < 1 || t[0].type != JSMN_OBJECT) {
+        printf("Object expected\n");
+        return 1;
+    }
+
+    /* Loop over all keys of the root object */
+    for (i = 1; i < r; i++) {
+        if (jsoneq(JSON_STRING, &t[i], "user") == 0) {
+            /* We may use strndup() to fetch string value */
+            printf("- User: %.*s\n", t[i + 1].end - t[i + 1].start, JSON_STRING + t[i + 1].start);
+            i++;
+        } else if (jsoneq(JSON_STRING, &t[i], "admin") == 0) {
+            /* We may additionally check if the value is either "true" or "false" */
+            printf("- Admin: %.*s\n", t[i + 1].end - t[i + 1].start, JSON_STRING + t[i + 1].start);
+            i++;
+        } else if (jsoneq(JSON_STRING, &t[i], "uid") == 0) {
+            /* We may want to do strtol() here to get numeric value */
+            printf("- UID: %.*s\n", t[i + 1].end - t[i + 1].start, JSON_STRING + t[i + 1].start);
+            i++;
+        } else if (jsoneq(JSON_STRING, &t[i], "groups") == 0) {
+            int j;
+            printf("- Groups:\n");
+            if (t[i + 1].type != JSMN_ARRAY) {
+                continue; /* We expect groups to be an array of strings */
+            }
+            for (j = 0; j < t[i + 1].size; j++) {
+                jsmntok_t *g = &t[i + j + 2];
+                printf("  * %.*s\n", g->end - g->start, JSON_STRING + g->start);
+            }
+            i += t[i + 1].size + 1;
+        } else {
+            printf("Unexpected key: %.*s\n", t[i].end - t[i].start, JSON_STRING + t[i].start);
+        }
+    }
+    return EXIT_SUCCESS;
 }
 ```
 
-## 组装JSON数据包
 
-```c
-#include <stdio.h>
-#include <stdlib.h>
-#include "cJSON.h"
-
-int main (int argc, const char * argv[])
-{
-    // 创建JSON Object
-    cJSON *root = cJSON_CreateObject();
-
-    // 加入节点（键值对），节点名称为value，节点值为123.4
-    cJSON_AddNumberToObject(root, "value", 123.4);
-
-    // 打印JSON数据包
-    char *out = cJSON_Print(root);···
-    printf("%s\n",out);
-
-    // 释放内存
-    cJSON_Delete(root);
-    free(out);
-
-    return 0;
-}
-```
 
 # 参考文档
 
